@@ -1,7 +1,8 @@
 'use client';
 
 import { usePatientStore } from '@/lib/store';
-import { socratesQuestions, ayushQuestions, detectRedFlags, translations } from '@/lib/mock-data';
+import { socratesQuestions, ayushQuestions, detectRedFlags, translations, ttsLangCodes, sttLangCodes, completionMessages, redFlagMessages } from '@/lib/mock-data';
+import type { LocalizedQuestion } from '@/lib/mock-data';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
@@ -21,23 +22,22 @@ export default function ChatPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
-  const questions = ayushMode ? ayushQuestions : socratesQuestions;
+  const questions: LocalizedQuestion[] = ayushMode ? ayushQuestions : socratesQuestions;
   const t = translations[language] || translations.en;
 
   useEffect(() => {
     if (messages.length === 0) {
-      // Start with first question
       const firstQ = questions[0];
       const msg: ChatMessage = {
         id: `msg-${Date.now()}`,
         role: 'assistant',
-        content: firstQ.question,
+        content: firstQ.question[language] || firstQ.question.en,
         timestamp: new Date().toISOString(),
-        quickReplies: firstQ.quickReplies,
+        quickReplies: firstQ.quickReplies[language] || firstQ.quickReplies.en,
         source: ayushMode ? 'ayush' : 'socrates',
       };
       addMessage(msg);
-      if (ttsEnabled) speakText(firstQ.question);
+      if (ttsEnabled) speakText(firstQ.question[language] || firstQ.question.en);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ayushMode]);
@@ -52,8 +52,10 @@ export default function ChatPage() {
       const utter = new SpeechSynthesisUtterance(text);
       utter.rate = 0.9;
       utter.pitch = 1;
+      utter.lang = ttsLangCodes[language] || 'en-US';
       const voices = window.speechSynthesis.getVoices();
-      const langVoice = voices.find(v => v.lang.startsWith(language === 'hi' ? 'hi' : 'en'));
+      const langPrefix = ttsLangCodes[language]?.split('-')[0] || 'en';
+      const langVoice = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix));
       if (langVoice) utter.voice = langVoice;
       window.speechSynthesis.speak(utter);
     }
@@ -66,7 +68,7 @@ export default function ChatPage() {
     }
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
-    recognition.lang = language === 'hi' ? 'hi-IN' : 'en-US';
+    recognition.lang = sttLangCodes[language] || 'en-US';
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 
@@ -114,27 +116,30 @@ export default function ChatPage() {
     setTimeout(() => {
       if (nextIdx < questions.length) {
         const nextQ = questions[nextIdx];
+        const nextContent = nextQ.question[language] || nextQ.question.en;
+        const nextReplies = nextQ.quickReplies[language] || nextQ.quickReplies.en;
         const aiMsg: ChatMessage = {
           id: `msg-${Date.now() + 1}`,
           role: 'assistant',
-          content: nextQ.question,
+          content: nextContent,
           timestamp: new Date().toISOString(),
-          quickReplies: nextQ.quickReplies,
+          quickReplies: nextReplies,
           source: ayushMode ? 'ayush' : 'socrates',
         };
         addMessage(aiMsg);
-        if (ttsEnabled) speakText(nextQ.question);
+        if (ttsEnabled) speakText(nextContent);
         setCurrentQ(nextIdx);
       } else {
         // Interview complete
+        const completionText = completionMessages[language] || completionMessages.en;
         const aiMsg: ChatMessage = {
           id: `msg-${Date.now() + 1}`,
           role: 'assistant',
-          content: "Thank you! I have collected all the information. Let's move on to uploading any documents you may have, and then we'll review your summary together.",
+          content: completionText,
           timestamp: new Date().toISOString(),
         };
         addMessage(aiMsg);
-        if (ttsEnabled) speakText(aiMsg.content);
+        if (ttsEnabled) speakText(completionText);
       }
       setIsTyping(false);
     }, 800 + Math.random() * 600);
@@ -164,7 +169,7 @@ export default function ChatPage() {
           <button
             onClick={() => setTtsEnabled(!ttsEnabled)}
             className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"
-            title={ttsEnabled ? 'Mute audio' : 'Enable audio'}
+            title={ttsEnabled ? (t.muteAudio || 'Mute audio') : (t.enableAudio || 'Enable audio')}
           >
             {ttsEnabled ? <Volume2 className="h-5 w-5 text-teal-600" /> : <VolumeX className="h-5 w-5" />}
           </button>
@@ -185,7 +190,7 @@ export default function ChatPage() {
         <div className="animate-pulse-ring flex items-center gap-3 border-b-2 border-red-300 bg-red-50 px-4 py-3 md:px-6">
           <AlertTriangle className="h-5 w-5 shrink-0 text-red-600" />
           <p className="text-sm font-medium text-red-700">
-            Urgent symptom detected. A triage nurse has been alerted. Please proceed to the triage desk if your symptoms worsen.
+            {redFlagMessages[language] || redFlagMessages.en}
           </p>
         </div>
       )}
@@ -257,7 +262,7 @@ export default function ChatPage() {
               onClick={() => { setStep('upload'); router.push('/patient/upload'); }}
               className="h-14 w-full bg-gradient-to-r from-sky-500 to-teal-500 text-base font-semibold hover:from-sky-600 hover:to-teal-600"
             >
-              Continue to Document Upload <ArrowRight className="ml-2 h-5 w-5" />
+              {t.continueToUpload || 'Continue to Document Upload'} <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
           ) : (
             <div className="flex items-center gap-2">
@@ -266,7 +271,7 @@ export default function ChatPage() {
                 className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-all ${
                   isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-sky-100 text-sky-600 hover:bg-sky-200'
                 }`}
-                title="Voice input"
+                title={language !== 'en' ? 'Voice input' : 'Voice input'}
               >
                 <Mic className="h-5 w-5" />
               </button>
@@ -275,7 +280,7 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleSend(input); }}
-                placeholder={isListening ? 'Listening...' : 'Type your answer...'}
+                placeholder={isListening ? (t.listening || 'Listening...') : (t.typeAnswer || 'Type your answer...')}
                 className="h-12 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 text-base focus:border-sky-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-200"
                 disabled={isListening}
               />

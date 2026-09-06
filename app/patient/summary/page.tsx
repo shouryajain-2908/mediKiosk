@@ -1,7 +1,7 @@
 'use client';
 
 import { usePatientStore } from '@/lib/store';
-import { translations } from '@/lib/mock-data';
+import { translations, ttsLangCodes } from '@/lib/mock-data';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -51,6 +51,11 @@ export default function SummaryPage() {
       const text = `Hello ${patientName}. Here is your clinical summary. ${summary.map(s => `${s.title}: ${s.items.join(', ')}`).join('. ')}. Please review and confirm.`;
       const utter = new SpeechSynthesisUtterance(text);
       utter.rate = 0.9;
+      utter.lang = ttsLangCodes[language] || 'en-US';
+      const voices = window.speechSynthesis.getVoices();
+      const langPrefix = (ttsLangCodes[language] || 'en-US').split('-')[0];
+      const langVoice = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix));
+      if (langVoice) utter.voice = langVoice;
       window.speechSynthesis.speak(utter);
     }
   };
