@@ -2,6 +2,7 @@
 
 import { useStaffStore, usePatientStore } from '@/lib/store';
 import { mockTimelineEvents, mockLabResults, mockOcrResults, translations, redFlagRules } from '@/lib/mock-data';
+import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +13,7 @@ import {
   HeartPulse, LogOut, Users, AlertTriangle, FileText, Activity, Pill,
   Stethoscope, Shield, UserCog, ChevronRight, Clock, CheckCircle2,
   Volume2, Phone, MapPin, Calendar, TrendingUp, TrendingDown, FlaskConical,
-  ArrowLeft
+  ArrowLeft, CalendarDays
 } from 'lucide-react';
 import type { UserRole, Language } from '@/lib/types';
 
@@ -215,11 +216,29 @@ const statusConfig: Record<string, { label: string; color: string; bg: string }>
   confirmed: { label: 'Confirmed', color: 'text-green-600', bg: 'bg-green-100' },
 };
 
+interface AppointmentRow {
+  id: string;
+  patient_name: string;
+  patient_phone: string | null;
+  patient_age: number | null;
+  patient_gender: string | null;
+  department: string;
+  doctor_name: string;
+  appointment_date: string;
+  appointment_time: string;
+  reason: string | null;
+  language: string;
+  status: string;
+}
+
 export default function StaffDashboard() {
   const { role, email, name, logout } = useStaffStore();
   const router = useRouter();
   const [selectedPatient, setSelectedPatient] = useState<MockPatient | null>(null);
   const [filter, setFilter] = useState<'all' | 'flagged' | 'waiting' | 'captured'>('all');
+  const [appointments, setAppointments] = useState<AppointmentRow[]>([]);
+  const [showAppointments, setShowAppointments] = useState(false);
+  const [loadingAppts, setLoadingAppts] = useState(false);
 
   useEffect(() => {
     if (!role) {
@@ -229,6 +248,28 @@ export default function StaffDashboard() {
       }
     }
   }, [role, router]);
+
+  const fetchAppointments = async () => {
+    setLoadingAppts(true);
+    try {
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('*')
+        .order('appointment_date', { ascending: true });
+      if (error) throw error;
+      setAppointments((data || []) as AppointmentRow[]);
+    } catch (err) {
+      console.error('Failed to fetch appointments:', err);
+    } finally {
+      setLoadingAppts(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showAppointments) {
+      fetchAppointments();
+    }
+  }, [showAppointments]);
 
   if (!role) {
     return (
@@ -598,7 +639,33 @@ export default function StaffDashboard() {
           </Card>
         </div>
 
-        {/* Filter tabs */}
+        {/* View toggle */}
+        <div className="mb-4 flex gap-2">
+          <button
+            onClick={() => setShowAppointments(false)}
+            className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+              !showAppointments
+                ? 'bg-sky-500 text-white shadow-sm'
+                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            Patient Queue
+          </button>
+          <button
+            onClick={() => setShowAppointments(true)}
+            className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+              showAppointments
+                ? 'bg-teal-500 text-white shadow-sm'
+                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            <CalendarDays className="mr-1.5 inline h-4 w-4" />
+            Appointments
+          </button>
+        </div>
+
+        {/* Filter tabs (patient queue only) */}
+        {!showAppointments && (
         <div className="mb-4 flex gap-2 overflow-x-auto">
           {[
             { key: 'all', label: 'All Patients' },
@@ -619,8 +686,74 @@ export default function StaffDashboard() {
             </button>
           ))}
         </div>
+        )}
+
+        {/* Appointments view */}
+        {showAppointments && (
+          <div className="space-y-3">
+            {loadingAppts && (
+              <div className="py-12 text-center">
+                <p className="text-slate-400">Loading appointments...</p>
+              </div>
+            )}
+            {!loadingAppts && appointments.length === 0 && (
+              <div className="py-12 text-center">
+                <CalendarDays className="mx-auto mb-3 h-12 w-12 text-slate-300" />
+                <p className="text-slate-400">No appointments booked yet</p>
+              </div>
+            )}
+            {!loadingAppts && appointments.map((appt) => {
+              const apptStatusConfig: Record<string, { label: string; color: string; bg: string }> = {
+                pending: { label: 'Pending', color: 'text-amber-600', bg: 'bg-amber-100' },
+                confirmed: { label: 'Confirmed', color: 'text-green-600', bg: 'bg-green-100' },
+                completed: { label: 'Completed', color: 'text-teal-600', bg: 'bg-teal-100' },
+                cancelled: { label: 'Cancelled', color: 'text-red-600', bg: 'bg-red-100' },
+              };
+              const ast = apptStatusConfig[appt.status] || apptStatusConfig.pending;
+              return (
+                <Card key={appt.id} className="border-slate-200 shadow-sm transition-all hover:shadow-md">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-teal-100">
+                          <CalendarDays className="h-5 w-5 text-teal-600" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold text-slate-800">{appt.patient_name}</h3>
+                            <Badge className={`${ast.bg} ${ast.color} border-0`}>{ast.label}</Badge>
+                          </div>
+                          <p className="text-xs text-slate-500">
+                            {appt.patient_age != null ? `${appt.patient_age} yrs` : ''} {appt.patient_gender || ''} • {appt.language.toUpperCase()} • {appt.patient_phone || 'No phone'}
+                          </p>
+                          <p className="mt-1 text-sm text-slate-600">
+                            {appt.department} — {appt.doctor_name}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <div className="flex items-center gap-1 text-sm font-medium text-slate-700">
+                          <Calendar className="h-3.5 w-3.5 text-sky-500" />
+                          {appt.appointment_date}
+                        </div>
+                        <div className="flex items-center gap-1 text-sm text-slate-500">
+                          <Clock className="h-3.5 w-3.5 text-teal-500" />
+                          {appt.appointment_time}
+                        </div>
+                        {appt.reason && (
+                          <p className="mt-0.5 max-w-[200px] truncate text-xs text-slate-400">{appt.reason}</p>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
 
         {/* Patient queue */}
+        {!showAppointments && (
         <div className="space-y-3">
           {filteredPatients.map((p) => {
             const st = statusConfig[p.status];
@@ -683,6 +816,7 @@ export default function StaffDashboard() {
             <Users className="mx-auto mb-3 h-12 w-12 text-slate-300" />
             <p className="text-slate-400">No patients in this category</p>
           </div>
+        )}
         )}
       </div>
     </div>

@@ -4,7 +4,7 @@ import { usePatientStore } from '@/lib/store';
 import { useStaffStore } from '@/lib/store';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { Stethoscope, HeartPulse, Shield, Activity, Users, ChevronRight } from 'lucide-react';
+import { Stethoscope, HeartPulse, Shield, Activity, Users, ChevronRight, CalendarDays } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -29,6 +29,10 @@ export default function Home() {
 
   const goToStaffLogin = () => {
     router.push('/staff/login');
+  };
+
+  const goToAppointment = () => {
+    router.push('/appointment');
   };
 
   return (
@@ -72,6 +76,15 @@ export default function Home() {
               >
                 Start My Visit
                 <ChevronRight className="ml-2 h-5 w-5" />
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                onClick={goToAppointment}
+                className="h-14 rounded-xl border-teal-300 px-8 text-base font-semibold text-teal-700 hover:bg-teal-50"
+              >
+                <CalendarDays className="mr-2 h-5 w-5" />
+                Book Appointment
               </Button>
               <Button
                 size="lg"
